@@ -1,0 +1,17 @@
+{
+  "name": "uno-online",
+  "version": "1.0.0",
+  "description": "Multiplayer UNO for 2-5 players across devices",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

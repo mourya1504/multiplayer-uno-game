@@ -1,0 +1,14 @@
+services:
+  uno:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # Your local files are mounted into the container, so edits show up immediately
+      - ./server.js:/app/server.js
+      - ./public:/app/public
+      # Keep the container's node_modules separate from your machine's
+      - /app/node_modules
+    environment:
+      - PORT=3000
+      - NODE_ENV=development

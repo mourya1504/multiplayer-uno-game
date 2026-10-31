@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d3322">
+<title>UNO Online</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root {
+    --card-w: 84px;
+    --card-h: 126px;
+    --accent: #ffcc00;
+    --back: #c62828;
+    --bg1: #1f6f4a;
+    --bg2: #0d3322;
+  }
+  /* Per-device sizing */
+  @media (max-width: 600px) { :root { --card-w: 62px; --card-h: 93px; } }
+  @media (min-width: 900px) { :root { --card-w: 98px; --card-h: 147px; } }
+
+  body.theme-emerald  { --bg1: #1f6f4a; --bg2: #0d3322; }
+  body.theme-midnight { --bg1: #2b3a8c; --bg2: #0a0f2c; }
+  body.theme-sunset   { --bg1: #d9582b; --bg2: #4a0f1f; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: #fff;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px) 0 0 / 18px 18px,
+      radial-gradient(ellipse at 50% 0%, var(--bg1), var(--bg2) 75%) fixed;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    overflow-x: hidden;
+  }
+  .screen { padding: 16px; max-width: 960px; margin: 0 auto; }
+  .hidden { display: none !important; }
+  .panel {
+    background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px; padding: 16px; margin-bottom: 14px;
+    backdrop-filter: blur(6px); box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  h1 { font-size: clamp(30px, 7vw, 46px); margin: 12px 0 18px; text-shadow: 0 4px 0 #b71c1c, 0 8px 18px #000; letter-spacing: 2px; }
+  input {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    font-size: 16px; margin-bottom: 10px; background: #fff; color: #111;
+  }
+  button {
+    padding: 11px 16px; border: none; border-radius: 10px; font-size: 15px;
+    font-weight: 700; cursor: pointer; background: #fff; color: #111;
+    box-shadow: 0 4px 0 #9e9e9e; transition: transform .1s, box-shadow .1s;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 #9e9e9e; }
+  button:disabled { opacity: .45; cursor: default; transform: none; box-shadow: 0 4px 0 #9e9e9e; }
+  button.primary { background: var(--accent); box-shadow: 0 4px 0 #b28704; }
+  button.danger { background: #e53935; color: #fff; box-shadow: 0 4px 0 #8e0000; }
+  .err { color: #ffab91; min-height: 20px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .small { opacity: .75; font-size: 14px; }
+
+  /* Gear button and settings */
+  .gear {
+    position: fixed; top: 12px; right: 12px; z-index: 80;
+    width: 44px; height: 44px; border-radius: 50%; padding: 0; font-size: 20px;
+    background: rgba(0,0,0,.4); color: #fff; box-shadow: none; border: 1px solid rgba(255,255,255,.2);
+  }
+  .modal {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .modal > div {
+    background: #1d1d1d; padding: 22px; border-radius: 18px; min-width: 260px;
+    max-width: 420px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,.6);
+  }
+  .field { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; gap: 10px; }
+  select { padding: 8px; border-radius: 8px; border: none; font-size: 15px; }
+
+  /* Seats */
+  .players { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .chip {
+    position: relative; display: flex; align-items: center; gap: 10px;
+    background: rgba(0,0,0,.3); border-radius: 14px; padding: 8px 12px;
+    min-width: 120px; transition: box-shadow .3s, transform .3s;
+  }
+  .chip.turn { box-shadow: 0 0 0 3px var(--accent), 0 0 22px rgba(255,204,0,.45); transform: translateY(-3px); }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    background: var(--av, #888); box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 3px 6px rgba(0,0,0,.4);
+  }
+  .chip .meta { line-height: 1.25; }
+  .chip .count { font-weight: 800; font-size: 18px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 800; background: #e53935;
+    border-radius: 6px; padding: 2px 6px; margin-left: 4px; animation: pulse 1s infinite;
+  }
+  .chip button { padding: 6px 10px; font-size: 13px; margin-top: 4px; }
+  .chip.next { box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
+  .turn-label { font-size: 12px; font-weight: 700; margin-top: 4px; }
+  .turn-bar {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: center; align-items: center;
+    background: rgba(0,0,0,.3); border-radius: 14px; padding: 10px 14px; margin-top: 12px; font-size: 15px;
+  }
+  .turn-bar .turn-now { color: var(--accent); }
+  .turn-order { width: 100%; text-align: center; font-size: 14px; opacity: .95; }
+  .turn-order span { padding: 2px 8px; border-radius: 6px; display: inline-block; margin: 2px; }
+  .turn-order span.cur { background: var(--accent); color: #111; font-weight: 700; }
+  .turn-order span.nx { outline: 2px solid var(--accent); }
+
+  /* Table */
+  .table {
+    display: flex; justify-content: center; align-items: center; gap: clamp(20px, 6vw, 56px);
+    margin: 22px 0 10px; perspective: 1000px;
+  }
+  .table-ring {
+    border-radius: 50%; padding: 6px;
+  }
+  .status {
+    text-align: center; min-height: 24px; margin: 6px 0 4px; font-weight: 600;
+    text-shadow: 0 2px 6px #000;
+  }
+
+  /* 3D card */
+  .card3d {
+    position: relative; width: var(--card-w); height: var(--card-h); flex-shrink: 0;
+    transform-style: preserve-3d;
+    transform:
+      translateY(var(--lift, 0px))
+      rotateX(var(--rx, 0deg))
+      rotateY(calc(var(--ry, 0deg) + var(--flip, 0deg)));
+    transition: transform .45s cubic-bezier(.2,.8,.2,1);
+  }
+  .card3d.playable { cursor: pointer; --lift: -16px; }
+  .card3d.playable .front {
+    box-shadow: inset 0 0 0 3px #fff, 0 0 0 3px var(--accent), 0 22px 30px rgba(0,0,0,.55);
+  }
+  .face {
+    position: absolute; inset: 0; border-radius: 12px; overflow: hidden;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    box-shadow: inset 0 0 0 3px #fff, 0 12px 20px rgba(0,0,0,.45);
+  }
+  .face.front { background: var(--c); }
+  .face.front.red    { --c: linear-gradient(150deg, #ff6b6b, #d32f2f 55%, #8e0000); --ink: #c62828; }
+  .face.front.yellow { --c: linear-gradient(150deg, #fff59d, #fbc02d 55%, #f57f17); --ink: #e65100; }
+  .face.front.green  { --c: linear-gradient(150deg, #81c784, #2e7d32 55%, #1b5e20); --ink: #2e7d32; }
+  .face.front.blue   { --c: linear-gradient(150deg, #64b5f6, #1565c0 55%, #0a3d91); --ink: #1565c0; }
+  .face.front.wild   {
+    --c: conic-gradient(from 45deg, #e53935 0 25%, #fdd835 0 50%, #43a047 0 75%, #1e88e5 0);
+    --ink: #222;
+  }
+  .face.front::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.6) 50%, transparent 65%);
+    background-size: 250% 100%; mix-blend-mode: overlay;
+    animation: shine 3.5s linear infinite;
+  }
+  .no-motion .face.front::before { animation: none; display: none; }
+  @keyframes shine { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+  .oval {
+    position: absolute; left: 50%; top: 50%; width: 64%; height: 70%;
+    transform: translate(-50%, -50%) rotate(-22deg); border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fff, #f3f3f3 60%, #d9d9d9);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: calc(var(--card-w) * .36); color: var(--ink);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,.25);
+  }
+  .corner {
+    position: absolute; font-weight: 900; line-height: 1; color: #fff;
+    font-size: calc(var(--card-w) * .17); text-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+  .corner.tl { left: 8px; top: 7px; }
+  .corner.br { right: 8px; bottom: 7px; transform: rotate(180deg); }
+  .face.front.yellow .corner { color: #3e2723; text-shadow: none; }
+  .face.back {
+    transform: rotateY(180deg);
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.3), transparent 55%), var(--back);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .face.back::before {
+    content: ''; position: absolute; inset: 8px; border-radius: 9px;
+    border: 2px dashed rgba(255,255,255,.6);
+  }
+  .logo {
+    font-weight: 900; color: #ffcc00; letter-spacing: 1px; transform: rotate(-18deg);
+    font-size: calc(var(--card-w) * .2); text-shadow: 0 3px 0 #000, 0 0 14px rgba(0,0,0,.45);
+  }
+
+  /* Draw pile: stacked cards */
+  .pile {
+    position: relative; isolation: isolate; width: var(--card-w); height: var(--card-h);
+    cursor: pointer;
+  }
+  .pile .card3d { position: absolute; inset: 0; }
+  .pile::before, .pile::after {
+    content: ''; position: absolute; inset: 0; border-radius: 12px; background: var(--back);
+    box-shadow: inset 0 0 0 3px #fff, 0 8px 14px rgba(0,0,0,.4);
+  }
+  .pile::before { transform: translate(4px, 4px); z-index: -2; }
+  .pile::after  { transform: translate(8px, 8px); z-index: -1; }
+  .pile.off { cursor: default; }
+
+  /* Discard ring shows the active color */
+  .discard { border-radius: 14px; }
+
+  /* Hand */
+  #hand {
+    display: flex; gap: 10px; overflow-x: auto; padding: 34px 14px 30px;
+    perspective: 1000px; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  #hand .card3d { transform-origin: 50% 100%; }
+
+  /* Flying cards (animated overlay) */
+  .fly {
+    position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none;
+    width: var(--card-w); height: var(--card-h); perspective: 900px;
+  }
+  .confetti { position: fixed; width: 10px; height: 14px; border-radius: 2px; z-index: 70; pointer-events: none; }
+  .banner {
+    position: fixed; left: 50%; top: 40%; z-index: 65; pointer-events: none; white-space: nowrap;
+    font-size: clamp(28px, 8vw, 56px); font-weight: 900; color: var(--accent);
+    text-shadow: 0 6px 0 #b71c1c, 0 10px 22px #000;
+  }
+  .no-motion .confetti, .no-motion .banner { display: none; }
+  @keyframes pulse { 50% { transform: scale(1.15); } }
+  @keyframes nudge { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 85;
+    background: rgba(0,0,0,.85); padding: 10px 16px; border-radius: 10px;
+    display: none; max-width: 90vw; text-align: center;
+  }
+</style>
+</head>
+<body class="theme-emerald">
+
+<button id="gear" class="gear" title="Settings" aria-label="Settings">⚙</button>
+
+<!-- Lobby -->
+<div id="lobby" class="screen">
+  <h1>UNO</h1>
+  <div class="panel">
+    <input id="name" placeholder="Your name" maxlength="16">
+    <button id="createBtn" class="primary">Create room</button>
+  </div>
+  <div class="panel">
+    <input id="code" placeholder="Room code" maxlength="5" style="text-transform: uppercase">
+    <button id="joinBtn">Join room</button>
+    <p id="lobbyErr" class="err"></p>
+  </div>
+</div>
+
+<!-- Waiting room -->
+<div id="waiting" class="screen hidden">
+  <h2>Room <span id="roomCode"></span></h2>
+  <p class="small">Share this code with friends. 2 to 5 players.</p>
+  <div class="panel"><div id="roster" class="players"></div></div>
+  <p id="winnerMsg" class="status"></p>
+  <p id="hint" class="small"></p>
+  <button id="startBtn" class="primary">Start game</button>
+</div>
+
+<!-- Game table -->
+<div id="game" class="screen hidden">
+  <div class="row" style="justify-content: space-between; font-weight: 600;">
+    <span>Room <b id="gRoom"></b></span>
+    <span id="dirIcon"></span>
+    <span>Color: <b id="curColor"></b></span>
+  </div>
+  <div id="opponents" class="players" style="margin-top: 14px"></div>
+  <div id="turnBar" class="turn-bar"></div>
+  <div class="table">
+    <div id="draw" class="pile"></div>
+    <div id="discard" class="discard"></div>
+  </div>
+  <p id="status" class="status"></p>
+  <div class="row" style="justify-content: center">
+    <button id="drawBtn">Draw</button>
+    <button id="unoBtn" class="danger">UNO!</button>
+  </div>
+  <div id="hand"></div>
+</div>
+
+<!-- Wild color picker -->
+<div id="colorModal" class="modal hidden">
+  <div>
+    <h3>Choose a color</h3>
+    <div id="swatches" class="row" style="justify-content: center"></div>
+  </div>
+</div>
+
+<!-- Per-device settings (saved in this browser only) -->
+<div id="settings" class="modal hidden">
+  <div>
+    <h3>Your display settings</h3>
+    <p class="small">Saved on this device only. Other players are not affected.</p>
+    <div class="field">Table theme
+      <select id="themeSel">
+        <option value="emerald">Emerald</option>
+        <option value="midnight">Midnight</option>
+        <option value="sunset">Sunset</option>
+      </select>
+    </div>
+    <div class="field">Card back
+      <select id="backSel">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="gold">Gold</option>
+        <option value="purple">Purple</option>
+      </select>
+    </div>
+    <div class="field">Animations <input id="motionToggle" type="checkbox" style="width:auto;margin:0"></div>
+    <div class="field">3D tilt on hover <input id="tiltToggle" type="checkbox" style="width:auto;margin:0"></div>
+    <p class="small" id="deviceInfo"></p>
+    <button id="closeSettings" class="primary" style="width:100%">Done</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const socket = io();
+const MIN_PLAYERS = 2;
+const LABELS = { skip: '⊘', reverse: '⇄', draw2: '+2', wild: '★', wild4: '+4' };
+const BACKS = { red: '#c62828', blue: '#1565c0', gold: '#b8860b', purple: '#6a1b9a' };
+
+// ---------- Per-device preferences ----------
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const prefs = Object.assign(
+  { theme: 'emerald', back: 'red', motion: !reducedMotion, tilt: !isTouch },
+  JSON.parse(localStorage.getItem('uno-prefs') || '{}')
+);
+
+let state = null;
+let hand = [];
+let myTurn = false;
+let pendingWild = null;
+let lastFxKey = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, ch =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+function applyPrefs() {
+  document.body.className = 'theme-' + prefs.theme + (prefs.motion ? '' : ' no-motion');
+  document.documentElement.style.setProperty('--back', BACKS[prefs.back]);
+  $('themeSel').value = prefs.theme;
+  $('backSel').value = prefs.back;
+  $('motionToggle').checked = prefs.motion;
+  $('tiltToggle').checked = prefs.tilt;
+  $('deviceInfo').textContent = (isTouch ? 'Touch device detected' : 'Mouse/trackpad detected') +
+    ` · screen ${innerWidth}×${innerHeight}`;
+}
+function savePrefs() {
+  localStorage.setItem('uno-prefs', JSON.stringify(prefs));
+  applyPrefs();
+  if (state) render();
+}
+
+$('gear').onclick = () => $('settings').classList.remove('hidden');
+$('closeSettings').onclick = () => $('settings').classList.add('hidden');
+$('themeSel').onchange = e => { prefs.theme = e.target.value; savePrefs(); };
+$('backSel').onchange = e => { prefs.back = e.target.value; savePrefs(); };
+$('motionToggle').onchange = e => { prefs.motion = e.target.checked; savePrefs(); };
+$('tiltToggle').onchange = e => { prefs.tilt = e.target.checked; savePrefs(); };
+
+function show(id) {
+  ['lobby', 'waiting', 'game'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+}
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => (t.style.display = 'none'), 2200);
+}
+
+// ---------- Card building ----------
+function attachTilt(el) {
+  el.addEventListener('pointermove', e => {
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.setProperty('--rx', (-y * 20) + 'deg');
+    el.style.setProperty('--ry', (x * 20) + 'deg');
+  });
+  el.addEventListener('pointerleave', () => {
+    el.style.setProperty('--rx', '0deg');
+    el.style.setProperty('--ry', '0deg');
+  });
+}
+
+function makeCard(c, { faceDown = false, playable = false } = {}) {
+  const el = document.createElement('div');
+  el.className = 'card3d' + (playable ? ' playable' : '');
+  if (faceDown) el.style.setProperty('--flip', '180deg');
+
+  const label = LABELS[c.value] || c.value;
+  const front = document.createElement('div');
+  front.className = `face front ${c.color}`;
+  front.innerHTML = `<span class="corner tl">${label}</span>` +
+    `<span class="oval">${label}</span>` +
+    `<span class="corner br">${label}</span>`;
+
+  const back = document.createElement('div');
+  back.className = 'face back';
+  back.innerHTML = '<span class="logo">UNO</span>';
+
+  el.append(front, back);
+  if (prefs.tilt && !faceDown) attachTilt(el);
+  return el;
+}
+
+const avatarColor = name => {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 70% 50%)`;
+};
+
+// ---------- Lobby actions ----------
+const nameVal = () => $('name').value.trim() || 'Player';
+
+$('createBtn').onclick = () =>
+  socket.emit('create', { name: nameVal() }, res => {
+    if (!res.ok) $('lobbyErr').textContent = res.error;
+  });
+$('joinBtn').onclick = () =>
+  socket.emit('join', { name: nameVal(), code: $('code').value }, res => {
+    if (!res.ok) $('lobbyErr').textContent = res.error;
+  });
+
+// ---------- Room actions ----------
+$('startBtn').onclick = () => socket.emit('start');
+$('drawBtn').onclick = () => socket.emit('draw');
+$('draw').onclick = () => { if (!$('drawBtn').disabled) $('drawBtn').click(); };
+$('unoBtn').onclick = () => socket.emit('uno');
+
+// ---------- Server events ----------
+socket.on('state', s => {
+  state = s;
+  render();
+  const fx = s.fx;
+  if (!fx) return;
+  const key = `${s.code}:${fx.id}`;
+  if (lastFxKey === null) { lastFxKey = key; return; } // don't replay on join
+  if (key !== lastFxKey) {
+    lastFxKey = key;
+    // Wait a tick so the matching 'hand' update arrives first.
+    setTimeout(() => playFx(fx), 60);
+  }
+});
+socket.on('hand', h => { hand = h; renderHand(); });
+socket.on('error_msg', toast);
+
+// ---------- Rendering ----------
+function render() {
+  if (!state) return;
+  const me = state.players.find(p => p.id === socket.id);
+  if (!me) return show('lobby');
+  if (state.status === 'playing') return renderGame(me);
+  renderWaiting();
+}
+
+function renderWaiting() {
+  show('waiting');
+  const connected = state.players.filter(p => p.connected);
+  const isHost = state.hostId === socket.id;
+
+  $('roomCode').textContent = state.code;
+  $('roster').innerHTML = '';
+  for (const p of connected) {
+    const d = document.createElement('div');
+    d.className = 'chip';
+    d.innerHTML = `<div class="avatar" style="--av:${avatarColor(p.name)}">${esc(p.name[0].toUpperCase())}</div>` +
+      `<div class="meta">${esc(p.name)}${p.id === state.hostId ? ' 👑' : ''}${p.id === socket.id ? ' (you)' : ''}</div>`;
+    $('roster').appendChild(d);
+  }
+  $('winnerMsg').textContent = state.status === 'over'
+    ? (state.winner ? `🏆 ${state.winner} won!` : state.lastEvent) : '';
+  $('hint').textContent = `${connected.length}/5 players. Need at least ${MIN_PLAYERS} to start.`;
+  $('startBtn').classList.toggle('hidden', !isHost);
+  $('startBtn').textContent = state.status === 'over' ? 'Play again' : 'Start game';
+  $('startBtn').disabled = connected.length < MIN_PLAYERS;
+}
+
+function renderGame(me) {
+  show('game');
+  const turnPlayer = state.players.find(p => p.isTurn);
+  myTurn = !!turnPlayer && turnPlayer.id === socket.id;
+
+  $('gRoom').textContent = state.code;
+  $('dirIcon').textContent = state.direction === 1 ? '⟳ clockwise' : '⟲ counter-clockwise';
+  $('curColor').textContent = state.color;
+  $('curColor').style.color = state.color;
+
+  // Opponent seats
+  const opp = $('opponents');
+  opp.innerHTML = '';
+  for (const p of state.players) {
+    if (p.id === socket.id) continue;
+    const d = document.createElement('div');
+    d.className = 'chip' + (p.isTurn ? ' turn' : '') + (p.isNext ? ' next' : '');
+    d.dataset.pid = p.id;
+    d.innerHTML = `<div class="avatar" style="--av:${avatarColor(p.name)}">${esc(p.name[0].toUpperCase())}</div>` +
+      `<div class="meta">${esc(p.name)}${p.connected ? '' : ' <small>(offline)</small>'}` +
+      `<div class="count">🂠 ${p.count}</div><div class="turn-label">${turnLabel(p)}</div>${p.said ? '<span class="badge">UNO!</span>' : ''}</div>`;
+    if (p.count === 1 && !p.said && p.connected) {
+      const b = document.createElement('button');
+      b.className = 'danger';
+      b.textContent = 'Catch!';
+      b.onclick = () => socket.emit('catch', p.id);
+      d.querySelector('.meta').appendChild(b);
+    }
+    opp.appendChild(d);
+  }
+
+  // Draw pile (always face-down)
+  const pile = $('draw');
+  pile.innerHTML = '';
+  pile.classList.toggle('off', !myTurn);
+  pile.appendChild(makeCard({ color: 'back', value: '' }, { faceDown: true }));
+
+  // Discard pile with active-color glow
+  const dz = $('discard');
+  dz.innerHTML = '';
+  if (state.top) {
+    const el = makeCard(state.top);
+    dz.appendChild(el);
+    dz.style.boxShadow = `0 0 0 4px ${state.color}, 0 0 28px ${state.color}`;
+    dz.style.borderRadius = '14px';
+  }
+
+  renderTurnBar(turnPlayer);
+  $('status').textContent = `${state.lastEvent}. ` +
+    (myTurn ? '✨ Your turn!' : `Waiting for ${turnPlayer ? esc(turnPlayer.name) : '…'}`);
+  $('drawBtn').disabled = !myTurn;
+  $('unoBtn').disabled = me.count !== 1 || me.said;
+  renderHand();
+}
+
+function turnLabel(p) {
+  if (p.isTurn) return '▶ Playing now';
+  if (p.isNext) return '⏭ Next up';
+  return '⏳ Waiting';
+}
+
+function renderTurnBar(turnPlayer) {
+  if (!turnPlayer) return;
+  const nameFor = p => (p.id === socket.id ? 'You' : esc(p.name));
+  const next = state.players.find(p => p.isNext);
+  const seats = state.players.filter(p => p.connected);
+
+  $('turnBar').innerHTML =
+    `<div class="turn-now">▶ <b>${nameFor(turnPlayer)}</b> ${turnPlayer.id === socket.id ? 'are' : 'is'} playing now</div>` +
+    `<div>⏭ Next: <b>${next ? nameFor(next) : '—'}</b></div>` +
+    `<div class="turn-order">Turn order: ${seats.map(p =>
+      `<span class="${p.isTurn ? 'cur' : p.isNext ? 'nx' : ''}">${nameFor(p)}</span>`
+    ).join(' → ')}</div>`;
+}
+
+function renderHand() {
+  const h = $('hand');
+  h.innerHTML = '';
+  if (!state || state.status !== 'playing') return;
+
+  for (const c of hand) {
+    const ok = myTurn && (c.color === 'wild' || c.color === state.color || c.value === state.top.value);
+    const el = makeCard(c, { playable: ok });
+    el.dataset.cardId = c.id;
+    el.onclick = () => {
+      if (!myTurn) return toast("It's not your turn");
+      if (!ok) return toast("That card doesn't match");
+      if (c.color === 'wild') openColorPicker(c.id);
+      else socket.emit('play', { cardId: c.id });
+    };
+    h.appendChild(el);
+  }
+}
+
+function openColorPicker(cardId) {
+  pendingWild = cardId;
+  const sw = $('swatches');
+  sw.innerHTML = '';
+  const colors = { red: '#e53935', yellow: '#fdd835', green: '#43a047', blue: '#1e88e5' };
+  for (const [name, hex] of Object.entries(colors)) {
+    const b = document.createElement('button');
+    b.style.cssText = `width:110px;height:64px;background:${hex};color:#fff;text-transform:capitalize;text-shadow:0 1px 3px #000;`;
+    b.textContent = name;
+    b.onclick = () => {
+      socket.emit('play', { cardId: pendingWild, chosenColor: name });
+      $('colorModal').classList.add('hidden');
+    };
+    sw.appendChild(b);
+  }
+  $('colorModal').classList.remove('hidden');
+}
+
+// ---------- Animations (run on every connected client) ----------
+const seatEl = pid => pid === socket.id ? $('hand') : document.querySelector(`[data-pid="${pid}"]`);
+const centerOf = el => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+};
+const cardPx = () => {
+  const cs = getComputedStyle(document.documentElement);
+  return { w: parseFloat(cs.getPropertyValue('--card-w')), h: parseFloat(cs.getPropertyValue('--card-h')) };
+};
+
+// Flies one card along a 3D arc from one element to another.
+function flyCard(from, to, { card, faceDown = true, delay = 0, duration = 650, flipTo = null } = {}) {
+  if (!from || !to) return;
+  const { w, h } = cardPx();
+  const a = centerOf(from), b = centerOf(to);
+  const x1 = a.x - w / 2, y1 = a.y - h / 2;
+  const x2 = b.x - w / 2, y2 = b.y - h / 2;
+  const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - Math.max(90, Math.abs(x2 - x1) * 0.25);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'fly';
+  const el = makeCard(card || { color: 'back', value: '' }, { faceDown });
+  el.style.transition = 'transform .6s ease';
+  wrap.appendChild(el);
+  document.body.appendChild(wrap);
+
+  if (flipTo !== null) {
+    setTimeout(() => el.style.setProperty('--flip', flipTo), delay + duration * 0.55);
+  }
+
+  wrap.animate([
+    { transform: `translate(${x1}px,${y1}px) scale(.85) rotateX(0deg)`, opacity: 0 },
+    { transform: `translate(${x1}px,${y1}px) scale(1) rotateX(0deg)`, opacity: 1, offset: 0.12 },
+    { transform: `translate(${mx}px,${my}px) scale(1.18) rotateX(-22deg) rotateZ(${(x2 - x1) > 0 ? 6 : -6}deg)`, offset: 0.5 },
+    { transform: `translate(${x2}px,${y2}px) scale(1) rotateX(0deg) rotateZ(0deg)`, opacity: 1 }
+  ], { duration, delay, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' })
+    .onfinish = () => wrap.remove();
+}
+
+function confetti() {
+  const colors = ['#e53935', '#fdd835', '#43a047', '#1e88e5', '#ffffff'];
+  for (let i = 0; i < 110; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti';
+    p.style.background = colors[i % colors.length];
+    p.style.left = innerWidth / 2 + 'px';
+    p.style.top = innerHeight / 3 + 'px';
+    document.body.appendChild(p);
+    const dx = (Math.random() - 0.5) * innerWidth;
+    const dy = innerHeight * (0.4 + Math.random() * 0.6);
+    p.animate([
+      { transform: 'translate(0,0) rotate(0deg) rotateX(0deg)', opacity: 1 },
+      { transform: `translate(${dx}px,${dy}px) rotate(${Math.random() * 720}deg) rotateX(360deg)`, opacity: 0 }
+    ], { duration: 1800 + Math.random() * 1200, easing: 'cubic-bezier(.2,.6,.4,1)' })
+      .onfinish = () => p.remove();
+  }
+}
+
+function banner(text) {
+  const b = document.createElement('div');
+  b.className = 'banner';
+  b.textContent = text;
+  document.body.appendChild(b);
+  b.animate([
+    { transform: 'translate(-50%,-50%) scale(.3) rotateX(70deg)', opacity: 0 },
+    { transform: 'translate(-50%,-50%) scale(1.15) rotateX(0deg)', opacity: 1, offset: 0.3 },
+    { transform: 'translate(-50%,-50%) scale(1) rotateX(0deg)', opacity: 1, offset: 0.75 },
+    { transform: 'translate(-50%,-50%) scale(1.25)', opacity: 0 }
+  ], { duration: 1600, easing: 'ease-out' }).onfinish = () => b.remove();
+}
+
+function nameOf(pid) {
+  return state?.players.find(p => p.id === pid)?.name || 'Someone';
+}
+
+function playFx(fx) {
+  if (!state) return;
+  if (fx.type === 'play' && state.status === 'over') {
+    confetti();
+  }
+  if (!prefs.motion) return;
+
+  if (fx.type === 'deal') {
+    let i = 0;
+    for (let round = 0; round < 7; round++) {
+      for (const p of state.players) {
+        flyCard($('draw'), seatEl(p.id), {
+          faceDown: p.id !== socket.id,
+          delay: i++ * 70,
+          duration: 520,
+        });
+      }
+    }
+  }
+
+  if (fx.type === 'play') {
+    const from = seatEl(fx.playerId);
+    if (from) flyCard(from, $('discard'), { card: fx.card, faceDown: false, duration: 600 });
+    for (let i = 0; i < (fx.drawn || 0); i++) {
+      flyCard($('draw'), seatEl(fx.victimId), {
+        faceDown: fx.victimId !== socket.id,
+        delay: 350 + i * 160,
+        duration: 560,
+      });
+    }
+  }
+
+  if (fx.type === 'draw') {
+    const to = seatEl(fx.playerId);
+    const mine = fx.playerId === socket.id;
+    for (let i = 0; i < (fx.drawn || 0); i++) {
+      const newest = mine && fx.drawn === 1 ? hand[hand.length - 1] : null;
+      flyCard($('draw'), to, {
+        card: newest,
+        faceDown: !newest,
+        delay: i * 160,
+        duration: 600,
+        flipTo: newest ? null : null,
+      });
+    }
+  }
+
+  if (fx.type === 'uno') {
+    banner(`${nameOf(fx.playerId)} says UNO!`);
+    const seat = seatEl(fx.playerId);
+    if (seat) seat.animate([
+      { transform: 'translateX(0)' }, { transform: 'translateX(-6px)' },
+      { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }
+    ], { duration: 400 });
+  }
+}
+</script>
+</body>
+</html>
